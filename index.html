@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Controle de Atendimento - UNINASSAU/VERITAS</title>
+    <style>
+        /* CSS - Estilização Visual */
+        :root {
+            --primary-color: #004a8f; /* Azul Institucional */
+            --secondary-color: #fdd835; /* Amarelo */
+            --bg-color: #f4f4f4;
+            --panel-bg: #222;
+            --panel-text: #0f0;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: var(--bg-color); display: flex; flex-direction: column; height: 100vh; }
+        
+        /* Layout Grid */
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; flex: 1; overflow: hidden; }
+        
+        /* Seções */
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+        h2 { color: var(--primary-color); border-bottom: 2px solid var(--secondary-color); padding-bottom: 10px; margin-top: 0; }
+        
+        /* PAINEL (TV) */
+        #panel-display { background-color: var(--panel-bg); color: var(--panel-text); text-align: center; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+        .current-ticket { font-size: 4em; font-weight: bold; display: block; letter-spacing: 2px; }
+        .counter-info { font-size: 1.5em; color: #fff; margin-top: 10px; }
+        .history { display: flex; justify-content: space-around; margin-top: 15px; border-top: 1px solid #555; padding-top: 10px; }
+        .history-item { color: #888; font-size: 1.2em; }
+
+        /* TOTEM (Cliente) */
+        .totem-buttons { display: grid; gap: 15px; }
+        .btn-totem { padding: 20px; font-size: 1.2em; border: none; border-radius: 5px; cursor: pointer; transition: 0.3s; color: white; font-weight: bold; }
+        .btn-sp { background-color: #d32f2f; } /* Vermelho para Prioridade */
+        .btn-sg { background-color: #1976d2; } /* Azul para Geral */
+        .btn-se { background-color: #388e3c; } /* Verde para Exames */
+        .btn-totem:hover { opacity: 0.9; transform: scale(1.02); }
+
+        /* MESA DE ATENDIMENTO (Funcionário) */
+        .control-panel { display: flex; flex-direction: column; gap: 10px; }
+        .queue-info { background: #e3f2fd; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
+        .action-btn { padding: 15px; font-size: 1em; cursor: pointer; background: var(--primary-color); color: white; border: none; border-radius: 5px; }
+        .action-btn.finish { background: #555; }
+        
+        /* RELATÓRIOS */
+        .reports-container { overflow-y: auto; max-height: 200px; font-size: 0.9em; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: var(--primary-color); color: white; }
+
+        /* Rodapé */
+        footer { text-align: center; padding: 10px; background: #ddd; font-size: 0.8em; }
+
+        @media (max-width: 768px) { .container { grid-template-columns: 1fr; overflow-y: auto; } }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="left-col" style="display: flex; flex-direction: column; gap: 20px;">
+            
+            <div class="card" id="tv-panel">
+                <h2>Painel de Chamadas</h2>
+                <div id="panel-display">
+                    <span class="current-ticket" id="display-ticket">----</span>
+                    <div class="counter-info">GUICHÊ <span id="display-counter">--</span></div>
+                    <div class="history" id="history-list">
+                        </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Retire sua Senha</h2>
+                <div class="totem-buttons">
+                    <button class="btn-totem btn-sp" onclick="sistema.emitirSenha('SP')">SP - Prioritária (Idosos, Gestantes)</button>
+                    <button class="btn-totem btn-se" onclick="sistema.emitirSenha('SE')">SE - Retirada de Exames</button>
+                    <button class="btn-totem btn-sg" onclick="sistema.emitirSenha('SG')">SG - Atendimento Geral</button>
+                </div>
+                <p style="font-size: 0.8em; text-align: center; color: #666; margin-top: 10px;">
+                    Horário de funcionamento: 07:00 às 17:00 [cite: 52]
+                </p>
+            </div>
+        </div>
+
+        <div class="right-col" style="display: flex; flex-direction: column; gap: 20px;">
+            
+            <div class="card">
+                <h2>Área do Atendente (Guichê 01)</h2>
+                <div class="queue-info">
+                    <strong>Fila Atual:</strong>
+                    SP: <span id="q-sp">0</span> | SE: <span id="q-se">0</span> | SG: <span id="q-sg">0</span>
+                    <br>
+                    <small>Próxima lógica: <span id="next-logic">SP (Prioritária)</span></small>
+                </div>
+                <div class="control-panel">
+                    <button class="action-btn" onclick="sistema.chamarProximo()">🔔 Chamar Próximo</button>
+                    <button class="action-btn finish" onclick="sistema.finalizarAtendimento(false)">✅ Finalizar Atendimento</button>
+                    <button class="action-btn finish" style="background-color: #d32f2f;" onclick="sistema.finalizarAtendimento(true)">❌ Cliente Ausente (5%)</button>
+                </div>
+                <p id="status-msg" style="color: blue; margin-top: 10px;">Sistema pronto.</p>
+            </div>
+
+            <div class="card" style="flex: 1;">
+                <h2>Relatório Diário</h2>
+                <div class="reports-container">
+                    <table id="report-table">
+                        <thead>
+                            <tr>
+                                <th>Senha</th>
+                                <th>Emissão</th>
+                                <th>Atend.</th>
+                                <th>Status</th>
+                                <th>Tempo (Est.)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-body">
+                            </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 10px; font-size: 0.9em;">
+                    <strong>Estatísticas:</strong> Emitidas: <span id="stats-total">0</span> | Atendidas: <span id="stats-served">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        Protótipo baseado no documento "Sistema para controle de atendimento" - UNINASSAU
+    </footer>
+
+    <script>
+        class SistemaAtendimento {
+            constructor() {
+                // Estado do sistema
+                this.fila = []; // Array de objetos {senha, tipo, timestamp}
+                this.historicoChamadas = []; //  Últimas 5
+                this.relatorio = []; // [cite: 74] Dados detalhados
+                
+                // Contadores sequenciais diários 
+                this.sequencia = { SP: 0, SG: 0, SE: 0 };
+                
+                // Controle de Alternância 
+                // true = vez da SP, false = vez da SG/SE
+                this.proximaEPrioridade = true; 
+                
+                // Senha sendo atendida no momento
+                this.atendimentoAtual = null;
+                
+                this.atualizarInterface();
+            }
+
+            //  Formato YYMMDD-PPSQ
+            gerarNumeroSenha(tipo) {
+                const agora = new Date();
+                const yy = String(agora.getFullYear()).slice(-2);
+                const mm = String(agora.getMonth() + 1).padStart(2, '0');
+                const dd = String(agora.getDate()).padStart(2, '0');
+                
+                this.sequencia[tipo]++;
+                const sq = String(this.sequencia[tipo]).padStart(2, '0');
+                
+                return `${yy}${mm}${dd}-${tipo}${sq}`;
+            }
+
+            // Agente Sistema (AS) [cite: 23]
+            emitirSenha(tipo) {
+                // Validação de Horário (Simulada, apenas alerta console) [cite: 52]
+                const hora = new Date().getHours();
+                if (hora < 7 || hora >= 17) {
+                    console.warn("Fora do horário de expediente (07h-17h). Permitindo apenas para teste.");
+                }
+
+                const novaSenha = {
+                    numero: this.gerarNumeroSenha(tipo),
+                    tipo: tipo,
+                    emissao: new Date(),
+                    status: 'Aguardando'
+                };
+
+                this.fila.push(novaSenha);
+                this.adicionarAoRelatorio(novaSenha);
+                this.atualizarInterface();
+                alert(`Senha emitida: ${novaSenha.numero}`);
+            }
+
+            // Lógica Central de Priorização [cite: 50, 41, 43, 45]
+            obterProximaSenha() {
+                if (this.fila.length === 0) return null;
+
+                const sps = this.fila.filter(s => s.tipo === 'SP');
+                const ses = this.fila.filter(s => s.tipo === 'SE'); // Exames
+                const sgs = this.fila.filter(s => s.tipo === 'SG'); // Geral
+
+                let escolhida = null;
+
+                // Regra: SP -> (SE ou SG) -> SP
+                if (this.proximaEPrioridade) {
+                    // Tenta pegar SP
+                    if (sps.length > 0) {
+                        escolhida = sps[0];
+                        this.proximaEPrioridade = false; // Alterna para não-prioritário na próxima
+                    } else {
+                        // Se não tem SP, tenta SE (rápida), depois SG 
+                        if (ses.length > 0) escolhida = ses[0];
+                        else if (sgs.length > 0) escolhida = sgs[0];
+                        // Mantém flag true pois "devemos" uma rodada de SP se aparecer
+                    }
+                } else {
+                    // Turno Não-Prioritário (SE ou SG)
+                    if (ses.length > 0) {
+                        escolhida = ses[0]; // SE tem prioridade sobre SG 
+                    } else if (sgs.length > 0) {
+                        escolhida = sgs[0];
+                    } else if (sps.length > 0) {
+                        // Se não tem SE nem SG, atende SP
+                        escolhida = sps[0];
+                    }
+                    this.proximaEPrioridade = true; // Alterna de volta para SP
+                }
+
+                return escolhida;
+            }
+
+            // Agente Atendente (AA) [cite: 24]
+            chamarProximo() {
+                if (this.atendimentoAtual) {
+                    alert("Finalize o atendimento atual antes de chamar o próximo.");
+                    return;
+                }
+
+                const proxima = this.obterProximaSenha();
+
+                if (!proxima) {
+                    document.getElementById('status-msg').innerText = "Fila vazia.";
+                    return;
+                }
+
+                // Remove da fila
+                this.fila = this.fila.filter(s => s.numero !== proxima.numero);
+                
+                // Atualiza status
+                this.atendimentoAtual = proxima;
+                this.atendimentoAtual.inicioAtendimento = new Date();
+                this.atendimentoAtual.status = 'Em Atendimento';
+
+                // Atualiza Painel e Histórico
+                this.atualizarPainel(proxima);
+                
+                document.getElementById('status-msg').innerText = `Atendendo: ${proxima.numero}`;
+                this.atualizarInterface();
+            }
+
+            // Finalização e Cálculo de Tempo [cite: 38, 40]
+            finalizarAtendimento(ausente) {
+                if (!this.atendimentoAtual) return;
+
+                const t = this.atendimentoAtual;
+                t.fimAtendimento = new Date();
+
+                if (ausente) {
+                    //  5% descartadas
+                    t.status = 'Ausente/Descartada';
+                    t.tempoMedioEstimado = '0 min';
+                } else {
+                    t.status = 'Atendido';
+                    // Simulação do Tempo Médio (TM) para relatório [cite: 40, 42, 44, 46]
+                    t.tempoMedioEstimado = this.calcularTempoSimulado(t.tipo);
+                }
+
+                // Atualiza relatório
+                this.atualizarLinhaRelatorio(t);
+
+                this.atendimentoAtual = null;
+                document.getElementById('status-msg').innerText = "Guichê Livre.";
+                this.atualizarInterface();
+            }
+
+            // Simula os cálculos de tempo do PDF apenas para registro visual
+            calcularTempoSimulado(tipo) {
+                let tempo = 0;
+                const rnd = Math.random(); // 0.0 a 1.0
+
+                if (tipo === 'SP') {
+                    // [cite: 42] 15 min (+/- 5 min)
+                    tempo = 15 + (Math.random() * 10 - 5);
+                } else if (tipo === 'SG') {
+                    // [cite: 46] 5 min (+/- 3 min)
+                    tempo = 5 + (Math.random() * 6 - 3);
+                } else if (tipo === 'SE') {
+                    // [cite: 44] 95% < 1 min, 5% = 5 min
+                    if (rnd < 0.95) tempo = 0.8; 
+                    else tempo = 5;
+                }
+                return tempo.toFixed(1) + " min";
+            }
+
+            atualizarPainel(senhaObj) {
+                //  Histórico de 5 últimas
+                const display = document.getElementById('display-ticket');
+                const historyDiv = document.getElementById('history-list');
+
+                // Move a atual para o histórico antes de mudar, se houver anterior
+                if (display.innerText !== '----') {
+                    this.historicoChamadas.unshift(display.innerText);
+                    if (this.historicoChamadas.length > 5) this.historicoChamadas.pop();
+                }
+
+                // Atualiza atual
+                display.innerText = senhaObj.numero;
+                document.getElementById('display-counter').innerText = "01"; // Guichê fixo p/ demo
+
+                // Renderiza histórico
+                historyDiv.innerHTML = this.historicoChamadas
+                    .map(s => `<span class="history-item">${s}</span>`)
+                    .join('');
+            }
+
+            // Manipulação de DOM e Tabelas
+            adicionarAoRelatorio(ticket) {
+                this.relatorio.push(ticket);
+            }
+
+            atualizarLinhaRelatorio(ticket) {
+                // Em um app real, atualizaríamos o DB. Aqui, o render total cuida disso.
+            }
+
+            atualizarInterface() {
+                // Contadores da Fila
+                const sp = this.fila.filter(s => s.tipo === 'SP').length;
+                const se = this.fila.filter(s => s.tipo === 'SE').length;
+                const sg = this.fila.filter(s => s.tipo === 'SG').length;
+
+                document.getElementById('q-sp').innerText = sp;
+                document.getElementById('q-se').innerText = se;
+                document.getElementById('q-sg').innerText = sg;
+                
+                document.getElementById('next-logic').innerText = this.proximaEPrioridade ? "SP (Prioritária)" : "SE/SG (Normal)";
+
+                // Renderizar Tabela de Relatório [cite: 74]
+                const tbody = document.getElementById('report-body');
+                tbody.innerHTML = '';
+                
+                // Mostra as últimas 10 no relatório para não poluir a tela
+                const ultimas = this.relatorio.slice().reverse();
+                
+                let atendidasCount = 0;
+
+                ultimas.forEach(t => {
+                    if (t.status === 'Atendido') atendidasCount++;
+                    
+                    const row = `<tr>
+                        <td>${t.numero}</td>
+                        <td>${t.emissao.toLocaleTimeString()}</td>
+                        <td>${t.fimAtendimento ? t.fimAtendimento.toLocaleTimeString() : '-'}</td>
+                        <td>${t.status}</td>
+                        <td>${t.tempoMedioEstimado || '-'}</td>
+                    </tr>`;
+                    tbody.innerHTML += row;
+                });
+
+                document.getElementById('stats-total').innerText = this.relatorio.length;
+                document.getElementById('stats-served').innerText = atendidasCount;
+            }
+        }
+
+        // Inicialização
+        const sistema = new SistemaAtendimento();
+    </script>
+</body>
+</html>
